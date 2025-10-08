@@ -1,0 +1,39 @@
+name: CI and Deploy to VM
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build & Test
+        run: |
+          ./gradlew clean test bootJar
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VM_IP }} >> ~/.ssh/known_hosts
+
+      - name: Upload jar to VM
+        run: |
+          scp -i ~/.ssh/id_rsa build/libs/*.jar ${{ secrets.VM_USER }}@${{ secrets.VM_IP }}:/home/${{ secrets.VM_USER }}/app/app.jar
+
+      - name: Restart app on VM (run in background)
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_IP }} << 'EOF'
+            pkill -f 'app.jar' || true
+            nohup java -jar /home/${USER}/app/app.jar > /home/${USER}/app/app.log 2>&1 &
+            exit
+          EOF

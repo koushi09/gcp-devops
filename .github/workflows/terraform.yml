@@ -1,0 +1,30 @@
+name: Terraform Apply
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "infra" ]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Configure GCP credentials
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GCP_SA_KEY" > account.json
+          gcloud auth activate-service-account --key-file=account.json
+          gcloud config set project ${{ secrets.GCP_PROJECT }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: terraform apply -auto-approve -var="project=${{ secrets.GCP_PROJECT }}" -var="ssh_public_key=${{ secrets.SSH_PUB }}"
